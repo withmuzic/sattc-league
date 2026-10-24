@@ -36,6 +36,15 @@ window.CONFIG = {
 - Managers review rows in the Submissions tab and tick **Approved**. The dashboard updates within 1–2 minutes.
 - To see who approved a row, right-click the cell → **Show edit history**. (With personal Gmail accounts the "Approved by" column may stay blank.)
 
+## Sign-ups
+- Share the **sign-up form** link (League → Show form links). Each response lands in the **Sign-ups** tab.
+- The tab fills in **Players**, **Combined** rating, **Fee due** (early-bird through `early_bird_deadline` in Settings) and a **Check** note (free agent, missing rating, over the cap).
+- Managers tick **Paid** when the fee is collected, then **Confirmed**:
+  - A pair with both ratings is added to the **Teams** tab automatically (Status shows the team it became).
+  - Confirmed without Paid, or with a missing rating, is refused and the Status says why. Fix the rating cell in the row, then tick Confirmed again.
+  - A free agent stays in Sign-ups. Pair free agents by adding a row to the Teams tab yourself.
+- Unticking Confirmed does not remove a team; delete the Teams row by hand if needed.
+
 ## 6. Before the real season (after sign-up closes Nov 15)
 0. Remove the sample data once: in Apps Script, choose **clearSampleData** and click **Run**. It empties Teams, Schedule and Submissions, sets `sample` to `FALSE`, and adds a Division dropdown to the Teams tab.
 1. **Teams** tab: enter the real teams (Division, both players and ratings). The Team ID column is hidden and filled automatically.
@@ -45,6 +54,7 @@ window.CONFIG = {
 3. Adjust times and tables in the **Schedule** tab if needed, then run **League → Refresh form match list**.
 
 ## Score entry rules (also shown on the form)
+- Each game also has an optional **details** box for the points in each set, Red team first: `11-8, 9-11, 11-5, 11-7`. When it matches the set score, the dashboard shows the set points; anything else is shown as a note. The Check column flags details that don't match.
 - Each game is a dropdown with the **set score, Red team first**: `3-0`, `3-1`, `3-2` (Red wins) or `2-3`, `1-3`, `0-3` (Blue wins).
 - Forfeited game: `Forfeit: Red wins` or `Forfeit: Blue wins`.
   - Only one player shows: pick the set scores for that player's two singles; the other three games are forfeits to the opponent.

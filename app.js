@@ -100,7 +100,8 @@
         const flip = g.label.startsWith("Blue"); // show score in the order the players are listed
         const sets = (g.sets || []).map((s) => (flip ? [s[1], s[0]] : s).join("-")).join(", ");
         const sc = flip ? `${w.b}-${w.r}` : `${w.r}-${w.b}`;
-        return `<div class="game"><span>${i + 1}. ${esc(who(g.label))}${sets ? `<br><span class="sets">${sets}</span>` : ""}</span>
+        const note = sets || (g.detail ? esc(g.detail) : "");
+        return `<div class="game"><span>${i + 1}. ${esc(who(g.label))}${note ? `<br><span class="sets">${note}</span>` : ""}</span>
           <b style="color:var(--${w.winner})">${sc}</b></div>`;
       }).join("")}</div>`;
     } else {

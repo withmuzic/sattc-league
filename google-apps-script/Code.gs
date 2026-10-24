@@ -19,7 +19,7 @@
  */
 
 // ---------------------------------------------------------------- constants
-const T = { settings: 'Settings', teams: 'Teams', schedule: 'Schedule', subs: 'Submissions', howto: 'How to' };
+const T = { settings: 'Settings', teams: 'Teams', schedule: 'Schedule', subs: 'Submissions', howto: 'How to', signups: 'Sign-ups' };
 const GAME_LABELS = ['Red A vs Blue B', 'Blue A vs Red B', 'Doubles', 'Red A vs Blue A', 'Red B vs Blue B'];
 const Q_MATCH = 'Match';
 const Q_NOTES = 'Notes (optional)';
@@ -32,6 +32,12 @@ const FORM_DESCRIPTION =
   'Forfeited game: pick "Forfeit: Red wins" or "Forfeit: Blue wins".\n' +
   'Results appear on the standings after a league manager approves them.';
 const NO_MATCH_CHOICE = '(no open matches — ask the league manager)';
+const DETAIL_SUFFIX = ' details (optional)';
+const SIGNUP_COLS = ['Players', 'Combined', 'Fee due', 'Check', 'Paid', 'Confirmed', 'Status'];
+const Q_SU = {
+  div: 'Division', name: 'Your name', rating: 'Your USATT rating', partner: 'Partner name',
+  pRating: 'Partner USATT rating', phone: 'Phone (optional)', notes: 'Notes (optional)',
+};
 
 const DEFAULT_SETTINGS = [
   ['club', 'San Antonio Table Tennis Club'],
@@ -43,6 +49,9 @@ const DEFAULT_SETTINGS = [
   ['makeup_deadline', '2027-01-25'],
   ['finals', '2027-01-28'],
   ['match_times', '6:00 PM, 6:00 PM, 7:30 PM, 7:30 PM'],
+  ['early_bird_deadline', '2026-11-03'],
+  ['fee_early', '40'],
+  ['fee_regular', '50'],
   ['sample', 'TRUE'],
 ];
 
@@ -134,7 +143,7 @@ function setup() {
 
   form.addListItem().setTitle(Q_MATCH).setHelpText('Pick your matchup. Red/Blue are shown for each team.')
     .setChoiceValues([NO_MATCH_CHOICE]).setRequired(true);
-  GAME_LABELS.forEach((label, i) => addScoreItem_(form, i));
+  GAME_LABELS.forEach((label, i) => { addScoreItem_(form, i); addDetailItem_(form, i); });
   form.addParagraphTextItem().setTitle(Q_NOTES).setHelpText('Lateness, forfeits, anything the league manager should know.');
 
   form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
@@ -159,6 +168,11 @@ function setup() {
   generateSchedule_(true);
   Logger.log('Form (share this): ' + form.getPublishedUrl());
   Logger.log('Form editor: ' + form.getEditUrl());
+}
+
+function addDetailItem_(form, i) {
+  return form.addTextItem().setTitle('Game ' + (i + 1) + DETAIL_SUFFIX)
+    .setHelpText('Points in each set, Red team first, e.g. 11-8, 9-11, 11-5, 11-7').setRequired(false);
 }
 
 function addScoreItem_(form, i) {
@@ -195,6 +209,76 @@ function upgradeScoreQuestions() {
   ss.setActiveSheet(resp); ss.moveActiveSheet(1);
   refreshFormChoices();
   clearCache_();
+}
+
+// One-time: add an optional "Game N details" box right after each game's set-score dropdown.
+function addGameDetailItems() {
+  const form = getForm_();
+  const titles = form.getItems().map(it => it.getTitle());
+  for (let i = 0; i < GAME_LABELS.length; i++) {
+    if (titles.indexOf('Game ' + (i + 1) + DETAIL_SUFFIX) >= 0) continue;
+    const game = form.getItems().find(it => it.getTitle().indexOf('Game ' + (i + 1) + ' ·') === 0);
+    const added = addDetailItem_(form, i);
+    if (game) form.moveItem(added.getIndex(), game.getIndex() + 1);
+  }
+  clearCache_();
+}
+
+// Adds any setting keys introduced after the sheet was first set up (existing values are kept).
+function ensureSettings_() {
+  const st = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T.settings);
+  const keys = st.getRange(2, 1, Math.max(st.getLastRow() - 1, 1), 1).getValues().map(r => String(r[0]).trim());
+  const missing = DEFAULT_SETTINGS.filter(([k]) => k !== 'sample' && keys.indexOf(k) < 0);
+  if (missing.length) st.getRange(st.getLastRow() + 1, 1, missing.length, 2).setValues(missing);
+  SETTINGS_CACHE = null;
+}
+
+// One-time: create the sign-up form and the Sign-ups review tab.
+function setupSignupForm() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SIGNUP_FORM_ID')) throw new Error('Sign-up form already exists. Use League → Show form links.');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSettings_();
+  const divs = Object.keys(divisions_());
+  const form = FormApp.create((getSetting_('short') || 'League') + ' Team League — Sign-up');
+  form.setDescription(
+    getSetting_('club') + ' · ' + getSetting_('season') + '\n' +
+    'One sign-up per team per division. Playing both divisions? Submit once for each.\n' +
+    'No partner yet? Leave the partner fields blank and you go on the free-agent list.\n' +
+    'Entry fee per player per division: $' + getSetting_('fee_early') + ' through ' + shortDate_(getSetting_('early_bird_deadline')) +
+    ', $' + getSetting_('fee_regular') + ' after. Pay at the front desk.\n' +
+    'Ratings: USATT rating as of Nov 15. No USATT rating? Leave it blank and the club will estimate one.');
+  try { form.setEmailCollectionType(FormApp.EmailCollectionType.VERIFIED); } catch (e) { form.setCollectEmail(true); }
+  form.setAllowResponseEdits(false);
+  form.setShowLinkToRespondAgain(true);
+  form.setConfirmationMessage('Thanks! Your sign-up is in. A league manager will confirm it once the entry fee is paid.');
+  const ratingRule = FormApp.createTextValidation().requireNumberBetween(0, 3500)
+    .setHelpText('Enter a whole number, or leave blank if you have no USATT rating.').build();
+  form.addMultipleChoiceItem().setTitle(Q_SU.div)
+    .setHelpText(divs.map(d => d + ': combined rating under ' + Number(divisions_()[d]).toLocaleString()).join(' · '))
+    .setChoiceValues(divs).setRequired(true);
+  form.addTextItem().setTitle(Q_SU.name).setRequired(true);
+  form.addTextItem().setTitle(Q_SU.rating).setHelpText('Leave blank if you have no USATT rating.').setValidation(ratingRule).setRequired(false);
+  form.addTextItem().setTitle(Q_SU.partner).setHelpText('Leave blank to join the free-agent list.').setRequired(false);
+  form.addTextItem().setTitle(Q_SU.pRating).setHelpText('Leave blank if your partner has no USATT rating.').setValidation(ratingRule).setRequired(false);
+  form.addTextItem().setTitle(Q_SU.phone).setHelpText('Only league managers see this.').setRequired(false);
+  form.addParagraphTextItem().setTitle(Q_SU.notes).setRequired(false);
+
+  const before = ss.getSheets().map(sh => sh.getSheetId());
+  form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
+  props.setProperty('SIGNUP_FORM_ID', form.getId());
+  SpreadsheetApp.flush();
+  let sheet = null;
+  for (let t = 0; t < 10 && !sheet; t++) {
+    sheet = SpreadsheetApp.openById(ss.getId()).getSheets().find(sh => before.indexOf(sh.getSheetId()) < 0) || null;
+    if (!sheet) { Utilities.sleep(1000); SpreadsheetApp.flush(); }
+  }
+  if (!sheet) throw new Error('Could not find the sign-up response sheet.');
+  sheet.setName(T.signups);
+  sheet.getRange(1, sheet.getLastColumn() + 1, 1, SIGNUP_COLS.length).setValues([SIGNUP_COLS]).setFontWeight('bold').setBackground('#fff4d6');
+  sheet.setFrozenRows(1);
+  Logger.log('Sign-up form (share this): ' + form.getPublishedUrl());
+  Logger.log('Sign-up form editor: ' + form.getEditUrl());
 }
 
 // Removes the sample teams, schedule and test submissions so real teams can be entered.
@@ -263,7 +347,10 @@ function onOpen() {
 
 function showLinks() {
   const form = getForm_();
-  SpreadsheetApp.getUi().alert('Form for players:\n' + form.getPublishedUrl() + '\n\nForm editor:\n' + form.getEditUrl());
+  const sid = PropertiesService.getScriptProperties().getProperty('SIGNUP_FORM_ID');
+  const su = sid ? FormApp.openById(sid) : null;
+  SpreadsheetApp.getUi().alert('Result form for players:\n' + form.getPublishedUrl() + '\n\nResult form editor:\n' + form.getEditUrl() +
+    (su ? '\n\nSign-up form for players:\n' + su.getPublishedUrl() + '\n\nSign-up form editor:\n' + su.getEditUrl() : ''));
 }
 
 // ---------------------------------------------------------------- schedule
@@ -337,6 +424,7 @@ function matchChoice_(m) {
 // ---------------------------------------------------------------- triggers
 function handleSubmit(e) {
   const sh = e.range.getSheet();
+  if (sh.getName() === T.signups) { checkSignup_(sh, e.range.getRow()); return; }
   checkRow_(sh, e.range.getRow());
   clearCache_();
 }
@@ -356,6 +444,8 @@ function handleEdit(e) {
     }
     clearCache_();
     refreshFormChoices();
+  } else if (name === T.signups) {
+    handleSignupEdit_(sh, e);
   } else if (name === T.teams) {
     ensureTeamIds_();
     clearCache_();
@@ -381,6 +471,16 @@ function checkRow_(sh, row) {
 
   const games = gameHeaders_(col).map(h => parseGame_(get(h)));
   games.forEach((g, i) => { if (g.error) notes.push('Game ' + (i + 1) + ': ' + g.error); });
+  detailHeaders_(col).forEach((h, i) => {
+    const d = h ? String(get(h) || '').trim() : '';
+    if (!d || games[i].error) return;
+    const ds = parseGame_(d);
+    if (ds.error) notes.push('Game ' + (i + 1) + ' details are not set scores (' + ds.error + ')');
+    else if (games[i].won && ds.sets.length) {
+      const r = ds.sets.filter(([x, y]) => x > y).length, b = ds.sets.length - r;
+      if (r !== games[i].won[0] || b !== games[i].won[1]) notes.push('Game ' + (i + 1) + ': details (' + r + '-' + b + ') do not match the set score');
+    }
+  });
   if (!notes.length) {
     const r = games.filter(g => g.winner === 'red').length;
     notes.unshift('Result ' + r + '-' + (5 - r) + (r > 2 ? ' Red wins' : ' Blue wins'));
@@ -481,11 +581,17 @@ function approvedResults_() {
     if (!id) return;
     const at = row[col['Approved at'] - 1];
     const t = at instanceof Date ? at.getTime() : i;
+    const dh = detailHeaders_(col);
     const games = gh.map((h, k) => {
       const g = parseGame_(row[col[h] - 1]);
       const o = { label: GAME_LABELS[k], sets: g.sets };
       if (g.forfeit) o.forfeit = g.forfeit;
       if (g.won) o.won = g.won;
+      const d = dh[k] ? String(row[col[dh[k]] - 1] || '').trim() : '';
+      if (d && !g.forfeit) {
+        const ds = parseGame_(d);
+        if (!ds.error && ds.sets.length) o.sets = ds.sets; else o.detail = d.slice(0, 80);
+      }
       return o;
     });
     if (!out[id] || out[id].t <= t) out[id] = { games, t };
@@ -546,7 +652,69 @@ function headerMap_(sh) {
 }
 
 function gameHeaders_(col) {
-  return [1, 2, 3, 4, 5].map(n => Object.keys(col).find(h => h.indexOf('Game ' + n + ' ') === 0));
+  return [1, 2, 3, 4, 5].map(n => Object.keys(col).find(h => h.indexOf('Game ' + n + ' ·') === 0));
+}
+function detailHeaders_(col) {
+  return [1, 2, 3, 4, 5].map(n => Object.keys(col).find(h => h === 'Game ' + n + DETAIL_SUFFIX));
+}
+
+// ---------------------------------------------------------------- sign-ups
+function checkSignup_(sh, row) {
+  const col = headerMap_(sh);
+  const v = sh.getRange(row, 1, 1, sh.getLastColumn()).getValues()[0];
+  const get = (h) => (col[h] ? v[col[h] - 1] : '');
+  const div = String(get(Q_SU.div)).trim();
+  const partner = String(get(Q_SU.partner)).trim();
+  const r1 = get(Q_SU.rating), r2 = get(Q_SU.pRating);
+  const players = partner ? 2 : 1;
+  const notes = [];
+  if (!partner) notes.push('Free agent');
+  if (r1 === '' || (partner && r2 === '')) notes.push('Rating missing: club estimate needed');
+  const combined = partner && r1 !== '' && r2 !== '' ? Number(r1) + Number(r2) : '';
+  const cap = divisions_()[div];
+  if (combined !== '' && cap && combined >= cap) notes.push('Over the ' + div + ' cap');
+  const ts = get('Timestamp');
+  const early = isDate_(ts) && toISO_(ts) <= getSetting_('early_bird_deadline');
+  const fee = Number(early ? getSetting_('fee_early') : getSetting_('fee_regular')) * players;
+  sh.getRange(row, col['Players']).setValue(players);
+  sh.getRange(row, col['Combined']).setValue(combined);
+  sh.getRange(row, col['Fee due']).setValue('$' + fee + (early ? ' (early-bird)' : ''));
+  sh.getRange(row, col['Check']).setValue(notes.join(' · ') || 'OK');
+  ['Paid', 'Confirmed'].forEach(h => { const c = sh.getRange(row, col[h]); if (c.getDataValidation() === null) c.insertCheckboxes(); });
+}
+
+// Ticking Confirmed adds the pair to the Teams tab (once). Ratings can be corrected in the row first.
+function handleSignupEdit_(sh, e) {
+  const col = headerMap_(sh);
+  const c = e.range.getColumn(), r0 = e.range.getRow();
+  if (r0 < 2) return;
+  if (c === col[Q_SU.rating] || c === col[Q_SU.pRating] || c === col[Q_SU.partner] || c === col[Q_SU.div]) {
+    for (let r = r0; r <= e.range.getLastRow(); r++) checkSignup_(sh, r);
+    return;
+  }
+  if (c !== col['Confirmed']) return;
+  for (let r = r0; r <= e.range.getLastRow(); r++) {
+    const v = sh.getRange(r, 1, 1, sh.getLastColumn()).getValues()[0];
+    const get = (h) => (col[h] ? v[col[h] - 1] : '');
+    const status = sh.getRange(r, col['Status']);
+    if (get('Confirmed') !== true) continue;
+    if (String(get('Status')).indexOf('Added') === 0) continue;
+    const fail = (msg) => { status.setValue(msg); sh.getRange(r, col['Confirmed']).setValue(false); };
+    if (get('Paid') !== true) { fail('Not added: tick Paid first'); continue; }
+    const partner = String(get(Q_SU.partner)).trim();
+    if (!partner) { status.setValue('Free agent: pair manually in the Teams tab'); continue; }
+    if (get(Q_SU.rating) === '' || get(Q_SU.pRating) === '') { fail('Not added: enter both ratings first'); continue; }
+    const tm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T.teams);
+    const firstEmpty = (() => {
+      const vals = tm.getRange(2, 2, Math.max(tm.getMaxRows() - 1, 1), 1).getValues();
+      const i = vals.findIndex(x => x[0] === '');
+      return i < 0 ? tm.getLastRow() + 1 : i + 2;
+    })();
+    tm.getRange(firstEmpty, 2, 1, 6).setValues([[String(get(Q_SU.div)).trim(), '', String(get(Q_SU.name)).trim(), Number(get(Q_SU.rating)), partner, Number(get(Q_SU.pRating))]]);
+    ensureTeamIds_();
+    status.setValue('Added to Teams as ' + tm.getRange(firstEmpty, 1).getValue());
+    clearCache_();
+  }
 }
 
 let SETTINGS_CACHE = null;
@@ -567,12 +735,13 @@ function divisions_() {
   return out;
 }
 
+function isDate_(v) { return !!v && typeof v.getTime === 'function'; }
 function toISO_(v) {
-  if (v instanceof Date) return Utilities.formatDate(v, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+  if (isDate_(v)) return Utilities.formatDate(v, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
   return String(v || '').trim();
 }
 function timeText_(v) {
-  if (v instanceof Date) return Utilities.formatDate(v, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'h:mm a');
+  if (isDate_(v)) return Utilities.formatDate(v, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'h:mm a');
   return String(v || '').trim();
 }
 function shortDate_(iso) {
