@@ -216,9 +216,39 @@ function clearSampleData() {
   const rule = SpreadsheetApp.newDataValidation().requireValueInList(Object.keys(divisions_()), true).setAllowInvalid(false).build();
   tm.getRange(2, 2, 199, 1).setDataValidation(rule);
   tm.getRange(2, 5, 199, 1).setNumberFormat('0');
+  tm.hideColumns(1);
   tm.getRange(2, 7, 199, 1).setNumberFormat('0');
   refreshFormChoices();
   clearCache_();
+}
+
+// Team IDs are internal: filled automatically for any team row that has a Division and Player 1.
+// Numbers are never reused, so existing schedule rows and results stay linked.
+function ensureTeamIds_() {
+  const tm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T.teams);
+  if (tm.getLastRow() < 2) return;
+  const rng = tm.getRange(2, 1, tm.getLastRow() - 1, 4);
+  const vals = rng.getValues();
+  const max = {};
+  vals.forEach(([id]) => { const m = String(id).match(/^(.+)-(\d+)$/); if (m) max[m[1]] = Math.max(max[m[1]] || 0, Number(m[2])); });
+  let changed = false;
+  vals.forEach(row => {
+    const div = String(row[1]).trim();
+    if (!row[0] && div && String(row[3]).trim()) {
+      max[div] = (max[div] || 0) + 1;
+      row[0] = div + '-' + String(max[div]).padStart(2, '0');
+      changed = true;
+    }
+  });
+  if (changed) tm.getRange(2, 1, vals.length, 1).setValues(vals.map(r => [r[0]]));
+}
+
+// One-time: hide the Team ID column (IDs are filled automatically from now on).
+function autoTeamIds() {
+  const tm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(T.teams);
+  tm.getRange('A1').setNote('Filled automatically. Do not edit.');
+  tm.hideColumns(1);
+  ensureTeamIds_();
 }
 
 function onOpen() {
@@ -246,6 +276,7 @@ function generateSchedule_(silent) {
     const ui = SpreadsheetApp.getUi();
     if (ui.alert('Overwrite the Schedule tab?', 'This replaces every matchup in the Schedule tab.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
   }
+  ensureTeamIds_();
   const weeks = listSetting_('weeks');
   const times = listSetting_('match_times');
   const divs = divisions_();
@@ -325,7 +356,10 @@ function handleEdit(e) {
     }
     clearCache_();
     refreshFormChoices();
-  } else if (name === T.teams || name === T.schedule || name === T.settings) {
+  } else if (name === T.teams) {
+    ensureTeamIds_();
+    clearCache_();
+  } else if (name === T.schedule || name === T.settings) {
     clearCache_();
   }
 }

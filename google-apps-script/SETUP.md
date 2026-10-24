@@ -38,7 +38,7 @@ window.CONFIG = {
 
 ## 6. Before the real season (after sign-up closes Nov 15)
 0. Remove the sample data once: in Apps Script, choose **clearSampleData** and click **Run**. It empties Teams, Schedule and Submissions, sets `sample` to `FALSE`, and adds a Division dropdown to the Teams tab.
-1. **Teams** tab: enter the real teams (Team ID such as `U3600-01`, Division, both players and ratings).
+1. **Teams** tab: enter the real teams (Division, both players and ratings). The Team ID column is hidden and filled automatically.
    - Leave Team name blank to show "Last name / Last name" automatically.
    - The higher-rated player automatically becomes A (captain).
 2. **League → Generate schedule**: creates the round-robin schedule and updates the form dropdown. It warns about any team over the rating cap.
