@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SATTC Team League</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">🏓</div>
+      <div>
+        <div class="club" id="club"></div>
+        <h1 id="title"></h1>
+      </div>
+    </div>
+    <div id="sampleBanner" class="banner" hidden>Sample data · not real results</div>
+    <div class="controls">
+      <div class="seg" id="divSeg" role="tablist" aria-label="Division"></div>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </div>
+</header>
+<main class="wrap" id="view"></main>
+<footer class="wrap"><span id="updated"></span>Not USATT-sanctioned · results do not affect ratings</footer>
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
