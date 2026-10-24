@@ -197,6 +197,30 @@ function upgradeScoreQuestions() {
   clearCache_();
 }
 
+// Removes the sample teams, schedule and test submissions so real teams can be entered.
+function clearSampleData() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tm = ss.getSheetByName(T.teams);
+  if (tm.getLastRow() > 1) tm.getRange(2, 1, tm.getLastRow() - 1, 7).clearContent();
+  const sc = ss.getSheetByName(T.schedule);
+  if (sc.getLastRow() > 1) sc.getRange(2, 1, sc.getLastRow() - 1, 10).clearContent();
+  const sub = ss.getSheetByName(T.subs);
+  if (sub.getLastRow() > 1) sub.deleteRows(2, sub.getLastRow() - 1);
+  getForm_().deleteAllResponses();
+  const st = ss.getSheetByName(T.settings);
+  const keys = st.getRange(2, 1, st.getLastRow() - 1, 1).getValues().map(r => r[0]);
+  const i = keys.indexOf('sample');
+  if (i >= 0) st.getRange(i + 2, 2).setValue('FALSE');
+  SETTINGS_CACHE = null;
+  // Division dropdown on the Teams tab
+  const rule = SpreadsheetApp.newDataValidation().requireValueInList(Object.keys(divisions_()), true).setAllowInvalid(false).build();
+  tm.getRange(2, 2, 199, 1).setDataValidation(rule);
+  tm.getRange(2, 5, 199, 1).setNumberFormat('0');
+  tm.getRange(2, 7, 199, 1).setNumberFormat('0');
+  refreshFormChoices();
+  clearCache_();
+}
+
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('League')
     .addItem('Refresh form match list', 'refreshFormChoices')

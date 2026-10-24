@@ -37,13 +37,12 @@ window.CONFIG = {
 - To see who approved a row, right-click the cell → **Show edit history**. (With personal Gmail accounts the "Approved by" column may stay blank.)
 
 ## 6. Before the real season (after sign-up closes Nov 15)
-1. **Teams** tab: delete the sample rows and enter the real teams (Team ID such as `U3600-01`, Division, both players and ratings).
+0. Remove the sample data once: in Apps Script, choose **clearSampleData** and click **Run**. It empties Teams, Schedule and Submissions, sets `sample` to `FALSE`, and adds a Division dropdown to the Teams tab.
+1. **Teams** tab: enter the real teams (Team ID such as `U3600-01`, Division, both players and ratings).
    - Leave Team name blank to show "Last name / Last name" automatically.
    - The higher-rated player automatically becomes A (captain).
 2. **League → Generate schedule**: creates the round-robin schedule and updates the form dropdown. It warns about any team over the rating cap.
 3. Adjust times and tables in the **Schedule** tab if needed, then run **League → Refresh form match list**.
-4. Delete the test rows in the **Submissions** tab.
-5. In the **Settings** tab, set `sample` to `FALSE` to remove the "Sample data" banner from the dashboard.
 
 ## Score entry rules (also shown on the form)
 - Each game is a dropdown with the **set score, Red team first**: `3-0`, `3-1`, `3-2` (Red wins) or `2-3`, `1-3`, `0-3` (Blue wins).

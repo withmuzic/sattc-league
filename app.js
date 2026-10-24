@@ -63,6 +63,7 @@
   function viewStandings() {
     const rows = standings(state.div);
     const d = L.divisions[state.div];
+    if (!rows.length) return `<div class="card"><h2>${state.div} Standings</h2><p class="muted">Teams will appear here after sign-up closes on Nov 15. The schedule is posted Nov 17.</p></div>`;
     return `<div class="card"><h2>${state.div} Standings <span class="muted small">· combined rating under ${d.cap.toLocaleString()}</span></h2>
       <div class="tablewrap"><table>
       <thead><tr><th>#</th><th class="l">Team</th><th>MP</th><th>W-L</th><th class="hide-sm">Games</th><th class="hide-sm">Sets ±</th><th>Pts</th></tr></thead>
@@ -117,11 +118,12 @@
   function viewSchedule() {
     const d = L.divisions[state.div];
     const nextWeek = L.dates.weeks.find((w) => w >= todayISO);
+    if (!d.matches.length) return `<div class="notice">The schedule is posted Tue, Nov 17. Season runs Thursdays, Nov 19 – Jan 21; finals Thu, Jan 28.</div>`;
     const weeks = L.dates.weeks.map((date, i) => ({ date, i, matches: d.matches.filter((m) => m.week === i + 1) }));
     const holidays = L.dates.holidays.map((h) => `<span class="tag">${fmtDate(h, { month: "short", day: "numeric" })} no play</span>`).join(" ");
     return `<div class="notice">${holidays}<br>Conflicts due the Monday before each Thursday · Makeup deadline ${fmtDate(L.dates.makeupDeadline)}</div>` +
       weeks.map((w) => `<div class="week-h"><h3>Week ${w.i + 1} · ${fmtDate(w.date)}</h3>
-        ${w.matches.every((m) => m.games) ? '<span class="tag">Done</span>' : w.date === nextWeek ? '<span class="tag next">Next</span>' : ""}</div>
+        ${w.matches.length && w.matches.every((m) => m.games) ? '<span class="tag">Done</span>' : w.date === nextWeek ? '<span class="tag next">Next</span>' : ""}</div>
         ${w.matches.map(matchCard).join("")}`).join("");
   }
 
@@ -153,6 +155,7 @@
 
   function viewTeams() {
     const d = L.divisions[state.div];
+    if (!d.teams.length) return `<div class="notice">No teams yet. Teams are listed here after sign-up closes on Nov 15.</div>`;
     const P = playerStats();
     return `<div class="notice">Finals eligibility: a player must play more than 50% of the team's regular-season matchups. Forfeited games are not counted as played.</div>` +
       d.teams.map((t) => { const total = teamTotal(t.id); return `<div class="card"><h2>${esc(t.name)} <span class="muted small">· combined ${t.A.rating + t.B.rating}</span></h2>
@@ -164,7 +167,8 @@
 
   function viewFinals() {
     const rows = standings(state.div).slice(0, 4);
-    const done = L.divisions[state.div].matches.every((m) => m.games);
+    const ms = L.divisions[state.div].matches;
+    const done = ms.length > 0 && ms.every((m) => m.games);
     const t = (i) => rows[i] ? `${i + 1}. ${esc(rows[i].team.name)} <span class="muted small">(${rows[i].pts} pts)</span>` : "TBD";
     return `<div class="notice">${done ? "Final seeding." : "Projected from current standings — final seeding after week 7."}
       Thu ${fmtDate(L.dates.finals, { month: "short", day: "numeric" })} · semifinals start 6:00 PM · first to 3 games advances.</div>
