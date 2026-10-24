@@ -11,6 +11,7 @@
   // ---------- scoring ----------
   function gameWinner(g) {
     if (g.forfeit) return { winner: g.forfeit, r: 0, b: 0, forfeit: true };
+    if (g.won) return { winner: g.won[0] > g.won[1] ? "red" : "blue", r: g.won[0], b: g.won[1] };
     let r = 0, b = 0;
     g.sets.forEach(([x, y]) => (x > y ? r++ : b++));
     return { winner: r > b ? "red" : "blue", r, b };
@@ -96,9 +97,9 @@
             <b style="color:var(--${w.winner})">${esc(winTeam.name)}</b></div>`;
         }
         const flip = g.label.startsWith("Blue"); // show score in the order the players are listed
-        const sets = g.sets.map((s) => (flip ? [s[1], s[0]] : s).join("-")).join(", ");
+        const sets = (g.sets || []).map((s) => (flip ? [s[1], s[0]] : s).join("-")).join(", ");
         const sc = flip ? `${w.b}-${w.r}` : `${w.r}-${w.b}`;
-        return `<div class="game"><span>${i + 1}. ${esc(who(g.label))}<br><span class="sets">${sets}</span></span>
+        return `<div class="game"><span>${i + 1}. ${esc(who(g.label))}${sets ? `<br><span class="sets">${sets}</span>` : ""}</span>
           <b style="color:var(--${w.winner})">${sc}</b></div>`;
       }).join("")}</div>`;
     } else {

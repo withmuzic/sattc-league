@@ -46,11 +46,10 @@ window.CONFIG = {
 5. In the **Settings** tab, set `sample` to `FALSE` to remove the "Sample data" banner from the dashboard.
 
 ## Score entry rules (also shown on the form)
-- For each game, enter the **Red team's score first**, sets separated by commas: `11-8, 9-11, 11-5, 11-7`
-- Forfeited game: `R` (Red wins) or `B` (Blue wins)
-  - Only one player shows: enter scores for that player's two singles; the other three games are forfeits to the opponent.
+- Each game is a dropdown with the **set score, Red team first**: `3-0`, `3-1`, `3-2` (Red wins) or `2-3`, `1-3`, `0-3` (Blue wins).
+- Forfeited game: `Forfeit: Red wins` or `Forfeit: Blue wins`.
+  - Only one player shows: pick the set scores for that player's two singles; the other three games are forfeits to the opponent.
   - Whole matchup forfeited (30 minutes late, etc.): all five games are forfeits → 5-0, 7 points.
-- Invalid scores (e.g. 11-10, fewer than 3 sets won) are flagged in the **Check** column.
 - If a match is submitted twice, the Check column shows "Also submitted in row N". Among approved rows, the **most recently approved** one counts.
 - Approved matches are removed from the form's match list automatically.
 

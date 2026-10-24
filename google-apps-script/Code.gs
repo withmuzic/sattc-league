@@ -24,7 +24,13 @@ const GAME_LABELS = ['Red A vs Blue B', 'Blue A vs Red B', 'Doubles', 'Red A vs 
 const Q_MATCH = 'Match';
 const Q_NOTES = 'Notes (optional)';
 const REVIEW_COLS = ['Match ID', 'Check', 'Approved', 'Approved by', 'Approved at'];
-const SCORE_RE = '^\\s*([RrBb]|\\d{1,2}\\s*-\\s*\\d{1,2}(\\s*,\\s*\\d{1,2}\\s*-\\s*\\d{1,2}){2,4})\\s*$';
+// Set score of each game, Red team first. Order matters: shown as-is in the form.
+const SCORE_CHOICES = ['3-0 (Red wins)', '3-1 (Red wins)', '3-2 (Red wins)', '2-3 (Blue wins)', '1-3 (Blue wins)', '0-3 (Blue wins)', 'Forfeit: Red wins', 'Forfeit: Blue wins'];
+const FORM_DESCRIPTION =
+  'Submit the result right after your matchup. Anyone on either team can submit.\n' +
+  'For each game, pick the set score with the Red team first (e.g. 3-1 means Red won 3 sets, Blue won 1).\n' +
+  'Forfeited game: pick "Forfeit: Red wins" or "Forfeit: Blue wins".\n' +
+  'Results appear on the standings after a league manager approves them.';
 const NO_MATCH_CHOICE = '(no open matches — ask the league manager)';
 
 const DEFAULT_SETTINGS = [
@@ -106,8 +112,8 @@ function setup() {
     ['3. Tick "Approved" for the correct submission. The dashboard updates within about a minute.'],
     ['4. If a match has two approved rows, the most recently approved one counts.'],
     ['5. To undo, untick "Approved".'],
-    ['Score format: Red team first, sets separated by commas, e.g. 11-8, 9-11, 11-5, 11-7'],
-    ['Forfeited game: type R (Red wins the game) or B (Blue wins the game).'],
+    ['Scores are set scores with the Red team first, e.g. 3-1 = Red won 3 sets, Blue won 1.'],
+    ['Forfeited game: "Forfeit: Red wins" or "Forfeit: Blue wins".'],
     ['Teams/Schedule changes: after editing, use League → Refresh form match list.'],
   ]);
   ht.getRange('A1').setFontWeight('bold').setFontSize(13);
@@ -120,11 +126,7 @@ function setup() {
   // Form
   const short = getSetting_('short') || 'League';
   const form = FormApp.create(short + ' League — Match Result');
-  form.setDescription(
-    'Submit the result right after your matchup. Anyone on either team can submit.\n' +
-    'Scores: Red team first, one entry per game, sets separated by commas — e.g. 11-8, 9-11, 11-5, 11-7\n' +
-    'Forfeited game: type R (Red wins it) or B (Blue wins it).\n' +
-    'Results appear on the standings after a league manager approves them.');
+  form.setDescription(FORM_DESCRIPTION);
   try { form.setEmailCollectionType(FormApp.EmailCollectionType.VERIFIED); } catch (e) { form.setCollectEmail(true); }
   form.setAllowResponseEdits(false);
   form.setShowLinkToRespondAgain(true);
@@ -132,13 +134,7 @@ function setup() {
 
   form.addListItem().setTitle(Q_MATCH).setHelpText('Pick your matchup. Red/Blue are shown for each team.')
     .setChoiceValues([NO_MATCH_CHOICE]).setRequired(true);
-  GAME_LABELS.forEach((label, i) => {
-    const v = FormApp.createTextValidation().requireTextMatchesPattern(SCORE_RE)
-      .setHelpText('Red team first, e.g. 11-8, 9-11, 11-5, 11-7 — or R / B for a forfeited game').build();
-    form.addTextItem().setTitle('Game ' + (i + 1) + ' · ' + label)
-      .setHelpText(i === 2 ? 'Doubles — Red team score first' : 'A = higher-rated player on the team · Red team score first')
-      .setValidation(v).setRequired(true);
-  });
+  GAME_LABELS.forEach((label, i) => addScoreItem_(form, i));
   form.addParagraphTextItem().setTitle(Q_NOTES).setHelpText('Lateness, forfeits, anything the league manager should know.');
 
   form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
@@ -163,6 +159,42 @@ function setup() {
   generateSchedule_(true);
   Logger.log('Form (share this): ' + form.getPublishedUrl());
   Logger.log('Form editor: ' + form.getEditUrl());
+}
+
+function addScoreItem_(form, i) {
+  return form.addListItem().setTitle('Game ' + (i + 1) + ' · ' + GAME_LABELS[i])
+    .setHelpText(i === 2 ? 'Doubles · set score, Red team first' : 'A = higher-rated player on the team · set score, Red team first')
+    .setChoiceValues(SCORE_CHOICES).setRequired(true);
+}
+
+// One-time upgrade for forms created with typed score boxes: replaces them with dropdowns
+// and resets the Submissions tab (all existing responses are removed).
+function upgradeScoreQuestions() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const form = getForm_();
+  form.setDescription(FORM_DESCRIPTION);
+  form.getItems().forEach(item => {
+    const m = item.getTitle().match(/^Game (\d) /);
+    if (!m) return;
+    const idx = item.getIndex();
+    form.deleteItem(item);
+    const added = addScoreItem_(form, Number(m[1]) - 1);
+    form.moveItem(added.getIndex(), idx);
+  });
+  form.deleteAllResponses();
+  form.removeDestination();
+  SpreadsheetApp.flush();
+  const old = ss.getSheetByName(T.subs);
+  if (old) ss.deleteSheet(old);
+  form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
+  SpreadsheetApp.flush();
+  const resp = findResponseSheet_(SpreadsheetApp.openById(ss.getId()), form);
+  resp.setName(T.subs);
+  resp.getRange(1, resp.getLastColumn() + 1, 1, REVIEW_COLS.length).setValues([REVIEW_COLS]).setFontWeight('bold').setBackground('#fff4d6');
+  resp.setFrozenRows(1);
+  ss.setActiveSheet(resp); ss.moveActiveSheet(1);
+  refreshFormChoices();
+  clearCache_();
 }
 
 function onOpen() {
@@ -316,8 +348,14 @@ function parseMatchId_(v) {
 // "11-8, 9-11, 11-5" → {sets:[[11,8],...], winner}; "R"/"B" → forfeit
 function parseGame_(v) {
   const s = String(v || '').trim();
-  if (/^[Rr]$/.test(s)) return { forfeit: 'red', winner: 'red', sets: [] };
-  if (/^[Bb]$/.test(s)) return { forfeit: 'blue', winner: 'blue', sets: [] };
+  if (/^[Rr]$/.test(s) || /^forfeit\W+red/i.test(s)) return { forfeit: 'red', winner: 'red', sets: [] };
+  if (/^[Bb]$/.test(s) || /^forfeit\W+blue/i.test(s)) return { forfeit: 'blue', winner: 'blue', sets: [] };
+  const w = s.match(/^([0-3])\s*-\s*([0-3])(?:\s|\(|$)/);
+  if (w) {
+    const r = Number(w[1]), b = Number(w[2]);
+    if (Math.max(r, b) !== 3 || r === b) return { error: 'invalid set score "' + s + '"', sets: [] };
+    return { won: [r, b], winner: r > b ? 'red' : 'blue', sets: [] };
+  }
   const sets = s.split(',').map(p => p.split('-').map(x => parseInt(x, 10)));
   if (!sets.length || sets.some(p => p.length !== 2 || p.some(isNaN))) return { error: 'unreadable "' + s + '"', sets: [] };
   let r = 0, b = 0, err = '';
@@ -389,6 +427,7 @@ function approvedResults_() {
       const g = parseGame_(row[col[h] - 1]);
       const o = { label: GAME_LABELS[k], sets: g.sets };
       if (g.forfeit) o.forfeit = g.forfeit;
+      if (g.won) o.won = g.won;
       return o;
     });
     if (!out[id] || out[id].t <= t) out[id] = { games, t };
